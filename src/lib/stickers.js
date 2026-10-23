@@ -85,6 +85,95 @@ const heart = (ctx, r, color = '#ff3f7d') => {
   shine(ctx, -r * 0.2, -r * 0.55, r * 0.07, r * 0.05, -0.6, 0.6);
 };
 
+const chromeHeart = (ctx, r) => {
+  ctx.save();
+  heartPath(ctx, r);
+  ctx.clip();
+  // nền kim loại
+  ctx.fillStyle = linear(ctx, -r, -r, r, r, ['#f6f7fb', '#b9c2d4', '#7c8798', '#eef1f7', '#9aa5b8']);
+  ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+  // dải sáng chéo kiểu chrome
+  ctx.globalAlpha = 0.85;
+  ['#ffffff', '#dfe5ef', '#8c97aa', '#ffffff'].forEach((c, i) => {
+    ctx.fillStyle = c;
+    const x = -r * 1.3 + i * r * 0.62;
+    ctx.beginPath();
+    ctx.moveTo(x, -r * 1.2);
+    ctx.lineTo(x + r * 0.26, -r * 1.2);
+    ctx.lineTo(x + r * 0.26 - r * 0.6, r * 1.2);
+    ctx.lineTo(x - r * 0.6, r * 1.2);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  // phản chiếu hồng nhẹ ở đáy
+  ctx.fillStyle = radial(ctx, 0, r * 0.5, 0, r, ['rgba(255,120,190,.55)', 'rgba(255,120,190,0)']);
+  ctx.fillRect(-r * 1.2, -r * 1.2, r * 2.4, r * 2.4);
+  ctx.restore();
+
+  heartPath(ctx, r);
+  ctx.strokeStyle = 'rgba(60, 70, 90, .55)';
+  ctx.lineWidth = Math.max(1, r * 0.07);
+  ctx.stroke();
+  shine(ctx, -r * 0.42, -r * 0.38, r * 0.14, r * 0.08, -0.6, 0.9);
+};
+
+const heartArrow = (ctx, r) => {
+  // mũi tên chéo
+  ctx.save();
+  ctx.rotate(-0.6);
+  ctx.strokeStyle = '#c8a06a';
+  ctx.lineWidth = Math.max(1.4, r * 0.1);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-r * 1.05, 0);
+  ctx.lineTo(r * 1.0, 0);
+  ctx.stroke();
+  // đầu tên
+  ctx.beginPath();
+  ctx.moveTo(r * 1.12, 0);
+  ctx.lineTo(r * 0.82, -r * 0.2);
+  ctx.lineTo(r * 0.82, r * 0.2);
+  ctx.closePath();
+  ctx.fillStyle = '#c8a06a';
+  ctx.fill();
+  // đuôi tên
+  [-1, 1].forEach((s) => {
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.95, 0);
+    ctx.lineTo(-r * 1.15, s * r * 0.24);
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  heartPath(ctx, r * 0.78);
+  ctx.fillStyle = linear(ctx, 0, -r * 0.7, 0, r * 0.7, ['#ffb0cb', '#f02c68']);
+  ctx.fill();
+  shine(ctx, -r * 0.3, -r * 0.3, r * 0.12, r * 0.07, -0.6, 0.75);
+};
+
+const kissMark = (ctx, r) => {
+  const lip = (dx, dy, scale, alpha) => {
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#e01b4c';
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 0.5, -r * 0.42, -r * 0.22, -r * 0.16);
+    ctx.quadraticCurveTo(0, -r * 0.3, r * 0.22, -r * 0.16);
+    ctx.quadraticCurveTo(r * 0.5, -r * 0.42, r * 0.85, 0);
+    ctx.quadraticCurveTo(0, r * 0.42, -r * 0.85, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  lip(r * 0.06, r * 0.14, 0.78, 0.45);
+  lip(-r * 0.04, -r * 0.06, 0.9, 0.72);
+  lip(0, 0, 1, 0.9);
+};
+
 const heartOutline = (ctx, r, color = '#ffffff') => {
   heartPath(ctx, r);
   ctx.strokeStyle = color;
@@ -754,6 +843,122 @@ const balloon = (ctx, r, color = '#ff5f8f') => {
   shine(ctx, -r * 0.24, -r * 0.46, r * 0.12, r * 0.2, -0.5, 0.6);
 };
 
+const starBurst = (ctx, r) => {
+  ctx.beginPath();
+  for (let i = 0; i < 24; i++) {
+    const rad = i % 2 === 0 ? r * 0.98 : r * 0.52;
+    const a = -Math.PI / 2 + (i * Math.PI) / 12;
+    const px = Math.cos(a) * rad;
+    const py = Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = linear(ctx, 0, -r, 0, r, ['#fff1a8', '#ffc247', '#ff8a3d']);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.7)';
+  ctx.lineWidth = Math.max(1, r * 0.05);
+  ctx.stroke();
+  shine(ctx, 0, -r * 0.12, r * 0.22, r * 0.12, 0, 0.55);
+};
+
+const checker = (ctx, r) => {
+  ctx.save();
+  ctx.rotate(-0.08);
+  const s = r * 1.5;
+  const n = 7;
+  const cell = (s * 2) / n;
+  ctx.beginPath();
+  ctx.roundRect ? ctx.roundRect(-s, -s, s * 2, s * 2, r * 0.24) : ctx.rect(-s, -s, s * 2, s * 2);
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = '#fff7f2';
+  ctx.fillRect(-s, -s, s * 2, s * 2);
+  ctx.fillStyle = '#2a2130';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if ((x + y) % 2 === 0) ctx.fillRect(-s + x * cell, -s + y * cell, cell, cell);
+    }
+  }
+  ctx.restore();
+  ctx.restore();
+};
+
+const halo = (ctx, r) => {
+  ctx.save();
+  ctx.shadowColor = 'rgba(255, 214, 102, .9)';
+  ctx.shadowBlur = r * 0.35;
+  ctx.beginPath();
+  ctx.ellipse(0, -r * 0.1, r * 0.78, r * 0.3, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = linear(ctx, -r, 0, r, 0, ['#fff3b0', '#f5c542', '#e8a90c']);
+  ctx.lineWidth = r * 0.18;
+  ctx.stroke();
+  ctx.restore();
+  [[-0.86, -0.4], [0.9, -0.34], [0, -0.5]].forEach(([sx, sy], i) => {
+    ctx.save();
+    ctx.translate(sx * r, sy * r);
+    ctx.globalAlpha = 0.9 - i * 0.15;
+    sparklePath(ctx, r * (i === 2 ? 0.16 : 0.12));
+    ctx.fillStyle = '#fff6c9';
+    ctx.fill();
+    ctx.restore();
+  });
+};
+
+const mushroom = (ctx, r) => {
+  // thân
+  ctx.beginPath();
+  ctx.roundRect
+    ? ctx.roundRect(-r * 0.22, r * 0.02, r * 0.44, r * 0.72, r * 0.18)
+    : ctx.rect(-r * 0.22, r * 0.02, r * 0.44, r * 0.72);
+  ctx.fillStyle = linear(ctx, 0, 0, 0, r * 0.8, ['#fffaf0', '#e8dcc2']);
+  ctx.fill();
+  // mũ
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.92, r * 0.08);
+  ctx.quadraticCurveTo(-r * 0.9, -r * 0.82, 0, -r * 0.82);
+  ctx.quadraticCurveTo(r * 0.9, -r * 0.82, r * 0.92, r * 0.08);
+  ctx.quadraticCurveTo(0, r * 0.3, -r * 0.92, r * 0.08);
+  ctx.closePath();
+  ctx.fillStyle = linear(ctx, -r * 0.4, -r * 0.7, r * 0.5, r * 0.2, ['#ff8f8f', '#e01b3c']);
+  ctx.fill();
+  // đốm
+  ctx.fillStyle = 'rgba(255,255,255,.92)';
+  [[-0.44, -0.34, 0.13], [0.3, -0.44, 0.1], [0.56, -0.06, 0.09], [-0.16, -0.1, 0.08]].forEach(
+    ([sx, sy, sr]) => {
+      ctx.beginPath();
+      ctx.arc(sx * r, sy * r, sr * r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  );
+  shine(ctx, -r * 0.5, -r * 0.6, r * 0.12, r * 0.06, -0.5, 0.6);
+};
+
+/** Sticker chữ: tự thu nhỏ để vừa khung. */
+function textSticker(text, { fill = '#ff3f7d', stroke = '#ffffff', weight = 900, rotate = -0.07, width = 1.92 } = {}) {
+  return (ctx, r) => {
+    ctx.save();
+    ctx.rotate(rotate);
+    let fs = r * 0.92;
+    ctx.font = `${weight} ${fs}px "Arial Black", "Inter", system-ui, sans-serif`;
+    const w = ctx.measureText(text).width;
+    const maxW = r * width;
+    if (w > maxW) {
+      fs *= maxW / w;
+      ctx.font = `${weight} ${fs}px "Arial Black", "Inter", system-ui, sans-serif`;
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = fs * 0.2;
+    ctx.strokeStyle = stroke;
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Catalogue                                                            */
 /* ------------------------------------------------------------------ */
@@ -764,14 +969,18 @@ export const STICKER_GROUPS = [
   { id: 'cute', name: 'Mặt cười' },
   { id: 'party', name: 'Tiệc tùng' },
   { id: 'retro', name: 'Retro' },
+  { id: 'text', name: 'Chữ' },
 ];
 
 export const STICKERS = [
   { type: 'vector', value: 'heart', group: 'love', label: 'Trái tim' },
   { type: 'vector', value: 'heartOutline', group: 'love', label: 'Tim rỗng' },
   { type: 'vector', value: 'doubleHeart', group: 'love', label: 'Hai trái tim' },
+  { type: 'vector', value: 'chromeHeart', group: 'love', label: 'Tim chrome' },
+  { type: 'vector', value: 'heartArrow', group: 'love', label: 'Tim mũi tên' },
   { type: 'vector', value: 'bow', group: 'love', label: 'Nơ hồng' },
   { type: 'vector', value: 'lips', group: 'love', label: 'Môi' },
+  { type: 'vector', value: 'kissMark', group: 'love', label: 'Vết hôn' },
 
   { type: 'vector', value: 'flower', group: 'nature', label: 'Hoa hồng' },
   { type: 'vector', value: 'daisy', group: 'nature', label: 'Hoa cúc' },
@@ -782,6 +991,8 @@ export const STICKERS = [
   { type: 'vector', value: 'cloud', group: 'nature', label: 'Mây' },
   { type: 'vector', value: 'rainbow', group: 'nature', label: 'Cầu vồng' },
   { type: 'vector', value: 'butterfly', group: 'nature', label: 'Bướm' },
+  { type: 'vector', value: 'mushroom', group: 'nature', label: 'Nấm' },
+  { type: 'vector', value: 'halo', group: 'nature', label: 'Vầng hào quang' },
 
   { type: 'vector', value: 'smiley', group: 'cute', label: 'Mặt cười' },
   { type: 'vector', value: 'bear', group: 'cute', label: 'Gấu' },
@@ -795,6 +1006,13 @@ export const STICKERS = [
   { type: 'vector', value: 'crown', group: 'party', label: 'Vương miện' },
   { type: 'vector', value: 'diamond', group: 'party', label: 'Kim cương' },
   { type: 'vector', value: 'lightning', group: 'party', label: 'Tia chớp' },
+  { type: 'vector', value: 'starBurst', group: 'party', label: 'Sao bùng nổ' },
+  { type: 'vector', value: 'checker', group: 'retro', label: 'Kẻ caro' },
+
+  { type: 'vector', value: 'textLove', group: 'text', label: 'LOVE' },
+  { type: 'vector', value: 'textXoxo', group: 'text', label: 'XOXO' },
+  { type: 'vector', value: 'textCute', group: 'text', label: 'so cute' },
+  { type: 'vector', value: 'textYear', group: 'text', label: '2026' },
 
   { type: 'vector', value: 'camera', group: 'retro', label: 'Máy ảnh' },
   { type: 'vector', value: 'film', group: 'retro', label: 'Cuộn phim' },
@@ -805,6 +1023,9 @@ const REGISTRY = {
   heart,
   heartOutline,
   doubleHeart,
+  chromeHeart,
+  heartArrow,
+  kissMark,
   bow,
   lips,
   flower,
@@ -827,9 +1048,17 @@ const REGISTRY = {
   crown,
   diamond,
   lightning,
+  starBurst,
+  checker,
+  mushroom,
+  halo,
   camera,
   film,
   music,
+  textLove: textSticker('LOVE', { fill: '#ff2d6f' }),
+  textXoxo: textSticker('XOXO', { fill: '#c026d3', rotate: 0.05 }),
+  textCute: textSticker('so cute', { fill: '#6d28d9', weight: 800, rotate: -0.04 }),
+  textYear: textSticker('2026', { fill: '#5b6474', stroke: '#ffffff' }),
 };
 
 /** Vẽ một sticker vector với tâm tại (0,0). */

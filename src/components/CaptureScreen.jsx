@@ -67,6 +67,8 @@ export default function CaptureScreen({
   const isCam = source === 'camera';
   const filled = shots.filter(Boolean).length;
   const done = filled === shots.length;
+  const doneRef = useRef(done);
+  doneRef.current = done;
 
   // Mở/đóng camera theo nguồn ảnh và vòng đời của màn hình.
   useEffect(() => {
@@ -175,7 +177,8 @@ export default function CaptureScreen({
 
   /** Tự chụp: đã đếm tới 0 nên chụp luôn. */
   const autoFire = useCallback(async () => {
-    if (capturing) return;
+    // Đã đủ ảnh thì dừng, tránh việc tự chụp chen vào lúc đang xem lại.
+    if (capturing || doneRef.current) return;
     setCapturing(true);
     setCountdown(null);
     await takeShot();
@@ -195,7 +198,7 @@ export default function CaptureScreen({
       setAutoLeft(autoSeconds);
       return undefined;
     }
-    if (!autoOn || !isCam || !ready || capturing) return undefined;
+    if (!autoOn || !isCam || !ready || capturing || done) return undefined;
 
     deadlineRef.current = Date.now() + autoSeconds * 1000;
     prevLeftRef.current = autoSeconds;
@@ -215,7 +218,7 @@ export default function CaptureScreen({
     }, 200);
 
     return () => clearInterval(id);
-  }, [activeSlot, autoOn, autoSeconds, captureMode, capturing, isCam, ready]);
+  }, [activeSlot, autoOn, autoSeconds, captureMode, capturing, done, isCam, ready]);
 
   const handleFlip = useCallback(async () => {
     const next = await flip();
@@ -293,9 +296,9 @@ export default function CaptureScreen({
             )}
 
             {flashKey > 0 && <div key={flashKey} className="capture__flash" />}
-
-            <p className="capture__hint">{hint}</p>
           </div>
+
+          <p className="capture__hint">{hint}</p>
 
           {error && (
             <div className="capture__error" role="alert">
@@ -347,7 +350,7 @@ export default function CaptureScreen({
               </p>
             </header>
 
-            <div className="capture__field">
+            <div className="capture__field capture__field--source">
               <span className="capture__label">Nguồn ảnh</span>
               <div className="capture__source" role="group" aria-label="Nguồn ảnh">
                 <button
@@ -369,7 +372,7 @@ export default function CaptureScreen({
               </div>
             </div>
 
-            <div className="capture__field">
+            <div className="capture__field capture__field--mode">
               <span className="capture__label">Kiểu chụp</span>
               {captureMode === 'auto' ? (
                 <button
@@ -378,14 +381,14 @@ export default function CaptureScreen({
                   onClick={() => setAutoOn((v) => !v)}
                   aria-pressed={autoOn}
                 >
-                  {autoOn ? `Tự chụp sau ${autoSeconds}s · đang bật` : `Tự chụp sau ${autoSeconds}s · đang tắt`}
+                  {autoOn ? `Tự chụp ${autoSeconds}s · bật` : `Tự chụp ${autoSeconds}s · tắt`}
                 </button>
               ) : (
                 <span className="capture__note">Đếm ngược 3-2-1 khi bấm nút chụp</span>
               )}
             </div>
 
-            <div className="capture__field">
+            <div className="capture__field capture__field--slots">
               <span className="capture__label">
                 Ảnh đã chụp <b>{filled}/{shots.length}</b>
               </span>

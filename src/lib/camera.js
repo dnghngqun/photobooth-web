@@ -35,13 +35,32 @@ export class CameraError extends Error {
   }
 }
 
-const CONSTRAINTS = [
-  { video: { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
-  { video: { facingMode: { exact: 'user' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
-  { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
-  { video: { facingMode: { ideal: 'user' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false },
-  { video: true, audio: false },
-];
+const RES = { width: { ideal: 1920 }, height: { ideal: 1440 } };
+
+/**
+ * Ràng buộc camera theo đúng hướng người dùng chọn.
+ *
+ * Thứ tự ưu tiên phải bám theo `facing` được yêu cầu: nếu luôn thử
+ * 'environment' trước thì điện thoại sẽ mở camera sau dù giao diện đang
+ * tưởng là camera trước — đó chính là hiện tượng ảnh bị lật ngược.
+ */
+function buildConstraints(facing, deviceId) {
+  if (deviceId) {
+    return [
+      { video: { deviceId: { exact: deviceId }, ...RES }, audio: false },
+      { video: true, audio: false },
+    ];
+  }
+  const first = facing === 'environment' ? 'environment' : 'user';
+  const second = first === 'user' ? 'environment' : 'user';
+  return [
+    { video: { facingMode: { exact: first }, ...RES }, audio: false },
+    { video: { facingMode: { ideal: first }, ...RES }, audio: false },
+    { video: { facingMode: { exact: second }, ...RES }, audio: false },
+    { video: { facingMode: { ideal: second }, ...RES }, audio: false },
+    { video: true, audio: false },
+  ];
+}
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -198,6 +217,9 @@ export class CameraSession {
     this.video = null;
     // Mốc thời gian vừa nhả camera — dùng để chờ thiết bị "rảnh" trước khi xin lại.
     this._releasedAt = 0;
+    // Thông tin thiết bị đọc được sau khi đã cấp quyền.
+    this._facingModes = [];
+    this._videoInputs = [];
     // Nhả khoá chéo-tab (Web Locks).
     this._lockRelease = null;
     this._lockPending = false;
@@ -221,9 +243,33 @@ export class CameraSession {
   /** Danh sách camera trước/sau mà thiết bị hỗ trợ. */
   get facingModes() {
     const track = this.track;
-    if (!track || !track.getCapabilities) return [];
+    if (!track || !track.getCapabilities) {
+      return this._facingModes || [];
+    }
     const caps = track.getCapabilities();
-    return caps.facingMode || [];
+    const modes = Array.isArray(caps.facingMode) ? caps.facingMode : [];
+    if (modes.length) this._facingModes = modes;
+    return modes.length ? modes : this._facingModes || [];
+  }
+
+  /**
+   * Danh sách thiết bị camera. Sau khi được cấp quyền, `enumerateDevices`
+   * trả về đủ thiết bị kể cả trên Safari (nơi getCapabilities không có
+   * facingMode) — nhờ vậy nút đổi camera vẫn hiện đúng.
+   */
+  async videoInputs() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      this._videoInputs = devices.filter((d) => d.kind === 'videoinput');
+    } catch {
+      this._videoInputs = this._videoInputs || [];
+    }
+    return this._videoInputs;
+  }
+
+  /** Có thể đổi camera trước/sau hay không. */
+  get canFlip() {
+    return this.facingModes.length > 1 || (this._videoInputs?.length || 0) > 1;
   }
 
   /**
@@ -239,19 +285,24 @@ export class CameraSession {
       throw new CameraError('insecure', 'Trang phải chạy trên https:// hoặc http://localhost mới dùng được camera.');
     }
 
+    // Cho phép truyền thẳng { facing, deviceId } khi cần chỉ định thiết bị.
+    const target = typeof facing === 'object' && facing !== null ? facing : { facing };
+    const wantFacing = target.facing === 'environment' ? 'environment' : 'user';
+    const wantDeviceId = target.deviceId || null;
+
     // Đang có luồng sống → dùng luôn (trừ khi cần đổi hướng camera).
-    if (!force && this.alive) {
-      this.facing = facing;
+    if (!force && this.alive && !wantDeviceId) {
+      this.facing = wantFacing;
       return this.stream;
     }
 
     // Đang có request bay → dùng chung chính request đó, tuyệt đối không xin thêm.
     // (Request đã bị bỏ thì không dùng lại: ta sẽ tạo request mới, hàng đợi
     //  bên trong bảo đảm thiết bị không bị mở hai lần cùng lúc.)
-    if (this.request && !force && !this.request.ctx.abandoned) {
+    if (this.request && !force && !wantDeviceId && !this.request.ctx.abandoned) {
       const { promise } = this.request;
       const stream = await promise;
-      this.facing = facing;
+      this.facing = wantFacing;
       return stream;
     }
 
@@ -262,7 +313,7 @@ export class CameraSession {
     }
 
     const ctx = { abandoned: false };
-    const promise = this._open(facing, ctx).then((stream) => {
+    const promise = this._open({ facing: wantFacing, deviceId: wantDeviceId }, ctx).then((stream) => {
       if (ctx.abandoned) {
         stopStream(stream);
         throw new CameraError('cancelled', 'Yêu cầu camera đã bị bỏ.');
@@ -277,7 +328,9 @@ export class CameraSession {
 
     try {
       const stream = await promise;
-      this.facing = facing;
+      this.facing = wantFacing;
+      // Sau khi có quyền, nhãn thiết bị mới đọc được → cập nhật danh sách camera.
+      void this.videoInputs();
       return stream;
     } finally {
       if (this.request && this.request.promise === promise) this.request = null;
@@ -403,9 +456,12 @@ export class CameraSession {
   }
 
   /** Một lần xin luồng, thử lần lượt các ràng buộc. */
-  async _request(facing, ctx) {
+  async _request(target, ctx) {
+    const wantFacing = typeof target === 'object' && target !== null ? target.facing : target;
+    const deviceId = typeof target === 'object' && target !== null ? target.deviceId : null;
+    const facing = wantFacing === 'environment' ? 'environment' : 'user';
     let lastError = null;
-    for (const constraints of CONSTRAINTS) {
+    for (const constraints of buildConstraints(facing, deviceId)) {
       if (ctx.abandoned) {
         throw new CameraError('cancelled', 'Yêu cầu camera đã bị bỏ.');
       }
@@ -430,9 +486,19 @@ export class CameraSession {
           stopStream(stream);
           throw new CameraError('cancelled', 'Yêu cầu camera đã bị bỏ.');
         }
+        // Hướng thật lấy từ track (chính xác hơn ràng buộc ta vừa xin), để
+        // lớp giao diện biết có nên lật gương khung hình hay không.
         const mode = constraints.video?.facingMode;
-        const facingMode = typeof mode === 'object' ? mode.exact || mode.ideal : mode;
-        this.facing = facingMode || facing;
+        const modeName = typeof mode === 'object' ? mode.exact || mode.ideal : mode;
+        const track = stream.getVideoTracks()[0];
+        const settings = (track && track.getSettings && track.getSettings()) || {};
+        const caps = (track && track.getCapabilities && track.getCapabilities()) || {};
+        const detected =
+          settings.facingMode ||
+          (Array.isArray(caps.facingMode) ? caps.facingMode[0] : null) ||
+          modeName ||
+          facing;
+        this.facing = detected === 'environment' ? 'environment' : 'user';
         return stream;
       } catch (err) {
         lastError = err;
@@ -551,16 +617,43 @@ export class CameraSession {
 
   /** Đổi giữa camera trước và sau. Trả về facing mới, hoặc null nếu không đổi được. */
   async flip(video) {
+    // Cách 1: thiết bị báo được danh sách facingMode.
     const modes = this.facingModes;
-    if (!modes.length) return null;
-    const current = this.facing;
-    const next = modes.find((m) => m !== current) || current;
-    if (next === current) return null;
+    const next = modes.find((m) => m !== this.facing);
+    if (next) {
+      // Nhả luồng cũ TRƯỚC khi xin luồng mới: thiết bị chỉ nhận một luồng.
+      this._dropLiveStream();
+      try {
+        await this.acquire(next, { force: true });
+      } catch {
+        return null;
+      }
+      this.attach(video);
+      return this.facing;
+    }
 
-    // Nhả luồng cũ TRƯỚC khi xin luồng mới: thiết bị chỉ nhận được một luồng,
-    // giữ luồng cũ sẽ khiến lần xin mới bị từ chối.
+    // Cách 2: dựa vào danh sách thiết bị (Android cũ, Safari).
+    const devices = await this.videoInputs();
+    if (devices.length < 2) return null;
+    const currentId = this.track?.getSettings?.().deviceId;
+    const other = devices.find((d) => d.deviceId && d.deviceId !== currentId);
+    if (!other) return null;
+
+    const label = (other.label || '').toLowerCase();
+    const guess = /back|rear|environment|sau/.test(label)
+      ? 'environment'
+      : /front|user|face|trước|truoc/.test(label)
+        ? 'user'
+        : this.facing === 'user'
+          ? 'environment'
+          : 'user';
+
     this._dropLiveStream();
-    await this.acquire(next, { force: true });
+    try {
+      await this.acquire({ facing: guess, deviceId: other.deviceId }, { force: true });
+    } catch {
+      return null;
+    }
     this.attach(video);
     return this.facing;
   }

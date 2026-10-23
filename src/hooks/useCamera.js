@@ -79,7 +79,12 @@ export function useCamera() {
     if (!video || token !== tokenRef.current) return false;
 
     setFacing(cameraSession.facing);
-    setCanFlip(cameraSession.facingModes.length > 1);
+    setCanFlip(cameraSession.canFlip);
+    // Sau khi có quyền, danh sách thiết bị mới đầy đủ → cập nhật lại nút đổi camera.
+    cameraSession.videoInputs().then(() => {
+      if (token !== tokenRef.current) return;
+      setCanFlip(cameraSession.canFlip);
+    });
     cameraSession.attach(video);
 
     const hasFrame = await waitForVideoFrame(video, 6000);
@@ -220,6 +225,7 @@ export function useCamera() {
       const next = await cameraSession.flip(video);
       if (!next) return null;
       setFacing(next);
+      setCanFlip(cameraSession.canFlip);
       return next;
     } catch {
       return null;
