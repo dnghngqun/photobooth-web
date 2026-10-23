@@ -1637,8 +1637,15 @@ kbd {
     grid-template-columns: 1fr 1fr;
   }
 
+  /* Trang trí trên điện thoại: ưu tiên bề ngang để sticker đủ to mà chỉnh. */
   .decorate__canvas {
-    max-height: 52dvh;
+    width: 100%;
+    height: auto;
+    max-height: none;
+  }
+
+  .decorate__stage {
+    align-items: stretch;
   }
 
   .decorate__panel {
