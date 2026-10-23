@@ -24,42 +24,108 @@ export default function ResultScreen({ frame, shots, stickers, fileName, notify,
 
   const handleShare = async () => {
     const result = await shareCanvas(sheetCanvas, fileName);
-    if (result === 'downloaded') notify('Thiết bị chưa hỗ trợ chia sẻ — ảnh đã được tải xuống.');
+    if (result === 'downloaded') notify('Thiết bị chưa hỗ trợ chia sẻ, ảnh đã được tải xuống.');
   };
 
   return (
-    <section className="screen">
-      <h2 className="screen__title">Hoàn tất!</h2>
+    <section className="screen screen--result">
+      <header className="screen__head">
+        <div>
+          <h2 className="screen__title">Xong rồi!</h2>
+          <p className="screen__sub">
+            Tờ in đã sẵn sàng ở 300 DPI. Tải PNG để lưu, hoặc in trực tiếp đúng khổ 4×6 inch.
+          </p>
+        </div>
+      </header>
+
       <div className="result">
         <div className="result__preview">
           <canvas ref={previewRef} width={sheetCanvas.width} height={sheetCanvas.height} />
         </div>
-        <div className="result__actions">
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => downloadCanvas(sheetCanvas, fileName)}
-          >
-            Tải ảnh 4&times;6
-          </button>
-          {frame.sheet === 'strip' && (
+
+        <div className="result__panel">
+          <div className="result__summary">
+            <div>
+              <span className="result__key">Khung</span>
+              <strong>{frame.name}</strong>
+            </div>
+            <div>
+              <span className="result__key">Số ảnh</span>
+              <strong>{frame.cuts}</strong>
+            </div>
+            <div>
+              <span className="result__key">Kích thước</span>
+              <strong>{sheetCanvas.width}×{sheetCanvas.height}px</strong>
+            </div>
+            <div>
+              <span className="result__key">Định dạng</span>
+              <strong>PNG · 300 DPI</strong>
+            </div>
+          </div>
+
+          <div className="export-list">
             <button
               type="button"
-              className="btn"
-              onClick={() => downloadCanvas(renderStrip(frame, shots, stickers), fileName)}
+              className="export-card is-primary"
+              onClick={() => downloadCanvas(sheetCanvas, fileName)}
             >
-              Tải dải 2&times;6
+              <span className="export-card__icon" aria-hidden="true">
+                ⤓
+              </span>
+              <span className="export-card__body">
+                <strong>Tải tờ 4×6</strong>
+                <span>PNG in được ở 300 DPI</span>
+              </span>
             </button>
-          )}
-          <button type="button" className="btn" onClick={() => printCanvas(sheetCanvas, notify)}>
-            In 4&times;6
-          </button>
-          {canShare && (
-            <button type="button" className="btn" onClick={handleShare}>
-              Chia sẻ
+
+            {frame.sheet === 'strip' && (
+              <button
+                type="button"
+                className="export-card"
+                onClick={() => downloadCanvas(renderStrip(frame, shots, stickers), fileName)}
+              >
+                <span className="export-card__icon" aria-hidden="true">
+                  ▭
+                </span>
+                <span className="export-card__body">
+                  <strong>Tải dải 2×6</strong>
+                  <span>Một dải dọc, tiện gửi bạn bè</span>
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="export-card"
+              onClick={() => printCanvas(sheetCanvas, notify)}
+            >
+              <span className="export-card__icon" aria-hidden="true">
+                ⎙
+              </span>
+              <span className="export-card__body">
+                <strong>In ngay</strong>
+                <span>Mở hộp thoại in của máy</span>
+              </span>
             </button>
-          )}
-          <button type="button" className="btn btn--ghost" onClick={onRestart}>
+
+            {canShare && (
+              <button type="button" className="export-card" onClick={handleShare}>
+                <span className="export-card__icon" aria-hidden="true">
+                  ↗
+                </span>
+                <span className="export-card__body">
+                  <strong>Chia sẻ</strong>
+                  <span>Gửi qua ứng dụng trên máy</span>
+                </span>
+              </button>
+            )}
+          </div>
+
+          <p className="result__hint">
+            Muốn chỉnh sticker? Bấm <strong>Quay lại</strong> ở góc trên để sửa mà không mất ảnh.
+          </p>
+
+          <button type="button" className="btn btn--ghost btn--block" onClick={onRestart}>
             Chụp lại từ đầu
           </button>
         </div>

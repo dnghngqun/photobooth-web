@@ -1,52 +1,45 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { STICKERS } from '../lib/frames.js';
+import { STICKERS, STICKER_GROUPS } from '../lib/stickers.js';
 import { drawScene, drawSticker } from '../lib/render.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** Chip sticker dạng shape — vẽ bằng chính hàm của render engine. */
-function ShapeChip({ def }) {
+/** Chip sticker vẽ bằng chính render engine để khớp 100% với ảnh in. */
+function StickerChip({ def, size = 46 }) {
   const ref = useRef(null);
   useEffect(() => {
     const target = ref.current;
     if (!target) return;
-    const size = 40;
     const ctx = target.getContext('2d');
     ctx.clearRect(0, 0, size, size);
     drawSticker(
       ctx,
-      { type: 'shape', value: def.value, color: def.color, x: 0.5, y: 0.5, size: 0.78, rot: 0, scale: 1 },
+      { type: 'vector', value: def.value, x: 0.5, y: 0.5, size: 0.82, rot: 0, scale: 1 },
       size,
       size
     );
-  }, [def]);
-  return <canvas ref={ref} width={40} height={40} />;
+  }, [def, size]);
+  return <canvas ref={ref} width={size} height={size} aria-hidden="true" />;
 }
 
-export default function DecorateScreen({
-  frame,
-  shots,
-  stickers,
-  onStickersChange,
-  onBack,
-  onFinish,
-}) {
+export default function DecorateScreen({ frame, shots, stickers, onStickersChange, onBack, onFinish }) {
   const canvasRef = useRef(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [group, setGroup] = useState('love');
   const [size, setSize] = useState(14);
   const [rot, setRot] = useState(0);
   const nextId = useRef(1);
 
-  // Kích thước canvas xem trước: giới hạn chiều cao để vẽ mượt trên mobile.
   const previewScale = useMemo(() => {
-    const maxW = 720;
-    const maxH = 1000;
+    const maxW = 760;
+    const maxH = 1040;
     return Math.min(1, maxW / frame.w, maxH / frame.h);
   }, [frame]);
 
   const selected = stickers.find((s) => s.id === selectedId) || null;
+  const palette = useMemo(() => STICKERS.filter((d) => d.group === group), [group]);
 
-  // Vẽ lại preview mỗi khi ảnh/sticker thay đổi.
+  // Vẽ lại preview mỗi khi ảnh / sticker thay đổi.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -57,7 +50,7 @@ export default function DecorateScreen({
     drawScene(ctx, frame, shots, stickers, { scale: previewScale });
   }, [frame, shots, stickers, previewScale]);
 
-  // Đồng bộ tool với sticker đang chọn.
+  // Đồng bộ thanh trượt với sticker đang chọn.
   useEffect(() => {
     if (selected) {
       setSize(Math.round(selected.size * 100));
@@ -138,12 +131,11 @@ export default function DecorateScreen({
   const addSticker = (def) => {
     const st = {
       id: nextId.current++,
-      type: def.type,
+      type: 'vector',
       value: def.value,
-      color: def.color,
       x: 0.5,
       y: 0.5,
-      size: def.type === 'emoji' ? 0.13 : 0.1,
+      size: 0.13,
       rot: 0,
       scale: 1,
     };
@@ -153,6 +145,18 @@ export default function DecorateScreen({
 
   const updateSelected = (patch) => {
     onStickersChange(stickers.map((st) => (st.id === selectedId ? { ...st, ...patch } : st)));
+  };
+
+  const duplicateSelected = () => {
+    if (!selected) return;
+    const copy = {
+      ...selected,
+      id: nextId.current++,
+      x: clamp(selected.x + 0.06, 0.02, 0.98),
+      y: clamp(selected.y + 0.06, 0.02, 0.98),
+    };
+    onStickersChange([...stickers, copy]);
+    setSelectedId(copy.id);
   };
 
   const deleteSelected = () => {
@@ -171,40 +175,62 @@ export default function DecorateScreen({
             onPointerMove={handlePointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
-            aria-label="Khung ảnh xem trước — chạm vào sticker để chọn, kéo để đổi vị trí"
+            aria-label="Khung ảnh xem trước: chạm vào sticker để chọn, kéo để đổi vị trí"
           />
+          <p className="decorate__caption">
+            {selected
+              ? 'Đang chọn một sticker: kéo để di chuyển, chỉnh bên phải.'
+              : 'Chạm vào sticker trên ảnh để chỉnh, hoặc thêm sticker mới từ bảng bên cạnh.'}
+          </p>
         </div>
+
         <div className="decorate__panel">
           <h2 className="panel__title">Trang trí</h2>
           <p className="panel__hint">
-            {selected
-              ? 'Kéo sticker để đổi vị trí, dùng thanh trượt bên dưới để chỉnh kích thước và góc xoay.'
-              : 'Chạm một sticker để thêm vào ảnh, rồi kéo để đặt vị trí.'}
+            {stickers.length > 0
+              ? `Đã đặt ${stickers.length} sticker. Kéo trực tiếp trên ảnh để căn vị trí.`
+              : 'Chọn sticker bên dưới để thêm vào ảnh, sau đó kéo để đặt vị trí.'}
           </p>
 
-          <div className="sticker-palette">
-            {STICKERS.map((def, i) => (
+          <div className="sticker-tabs" role="group" aria-label="Nhóm sticker">
+            {STICKER_GROUPS.map((g) => (
               <button
-                key={`${def.value}-${i}`}
+                key={g.id}
+                type="button"
+                className={`sticker-tab${group === g.id ? ' is-active' : ''}`}
+                onClick={() => setGroup(g.id)}
+                aria-pressed={group === g.id}
+              >
+                {g.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="sticker-palette">
+            {palette.map((def) => (
+              <button
+                key={def.value}
                 type="button"
                 className="sticker-chip"
                 title={def.label}
                 aria-label={`Thêm sticker ${def.label}`}
                 onClick={() => addSticker(def)}
               >
-                {def.type === 'emoji' ? def.value : <ShapeChip def={def} />}
+                <StickerChip def={def} />
               </button>
             ))}
           </div>
 
-          {selected && (
+          {selected ? (
             <div className="sticker-tools">
               <label className="tool">
-                <span>Size</span>
+                <span className="tool__label">
+                  Kích thước <b>{size}%</b>
+                </span>
                 <input
                   type="range"
                   min="4"
-                  max="40"
+                  max="42"
                   step="1"
                   value={size}
                   onChange={(e) => {
@@ -215,7 +241,9 @@ export default function DecorateScreen({
                 />
               </label>
               <label className="tool">
-                <span>Xoay</span>
+                <span className="tool__label">
+                  Xoay <b>{rot}°</b>
+                </span>
                 <input
                   type="range"
                   min="-180"
@@ -229,10 +257,17 @@ export default function DecorateScreen({
                   }}
                 />
               </label>
-              <button type="button" className="btn btn--danger btn--sm" onClick={deleteSelected}>
-                Xoá sticker
-              </button>
+              <div className="tool-actions">
+                <button type="button" className="btn btn--sm" onClick={duplicateSelected}>
+                  Nhân đôi
+                </button>
+                <button type="button" className="btn btn--sm btn--danger" onClick={deleteSelected}>
+                  Xoá sticker
+                </button>
+              </div>
             </div>
+          ) : (
+            <p className="panel__empty">Chưa chọn sticker nào.</p>
           )}
 
           <div className="screen__actions">

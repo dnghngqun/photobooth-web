@@ -6,6 +6,7 @@ import TopBar from './components/TopBar.jsx';
 import Toast from './components/Toast.jsx';
 import StartScreen from './components/StartScreen.jsx';
 import FramesScreen from './components/FramesScreen.jsx';
+import CaptureModeScreen from './components/CaptureModeScreen.jsx';
 import CaptureScreen from './components/CaptureScreen.jsx';
 import ReviewScreen from './components/ReviewScreen.jsx';
 import DecorateScreen from './components/DecorateScreen.jsx';
@@ -14,15 +15,17 @@ import ResultScreen from './components/ResultScreen.jsx';
 const STEP_LABEL = {
   start: 'Chào mừng',
   frames: 'Bước 1 · Chọn khung',
-  capture: 'Bước 2 · Chụp ảnh',
-  review: 'Bước 3 · Kiểm tra ảnh',
-  decorate: 'Bước 4 · Trang trí',
+  captureMode: 'Bước 2 · Chọn kiểu chụp',
+  capture: 'Bước 3 · Chụp ảnh',
+  review: 'Bước 4 · Kiểm tra ảnh',
+  decorate: 'Bước 5 · Trang trí',
   result: 'Hoàn tất',
 };
 
 const BACK_FROM = {
   frames: 'start',
-  capture: 'frames',
+  captureMode: 'frames',
+  capture: 'captureMode',
   review: 'capture',
   decorate: 'review',
 };
@@ -36,6 +39,8 @@ export default function App() {
   const [shots, setShots] = useState(() => new Array(getFrame(DEFAULT_FRAME_ID).cuts).fill(null));
   const [stickers, setStickers] = useState([]);
   const [activeSlot, setActiveSlot] = useState(0);
+  const [captureMode, setCaptureMode] = useState('auto');
+  const [autoSeconds, setAutoSeconds] = useState(10);
 
   const toast = useToast();
   const { show: notify } = toast;
@@ -77,7 +82,7 @@ export default function App() {
     setShots(new Array(next.cuts).fill(null));
     setStickers([]);
     setActiveSlot(0);
-    setScreen('capture');
+    setScreen('captureMode');
   }, []);
 
   const handleShotTaken = useCallback(
@@ -114,8 +119,14 @@ export default function App() {
     setShots(new Array(frame.cuts).fill(null));
     setStickers([]);
     setActiveSlot(0);
-    setScreen('capture');
+    setScreen('captureMode');
   }, [frame.cuts]);
+
+  const handleCaptureModeSelect = useCallback(({ mode, seconds }) => {
+    setCaptureMode(mode);
+    setAutoSeconds(seconds);
+    setScreen('capture');
+  }, []);
 
   const fileName = useMemo(() => {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -141,6 +152,16 @@ export default function App() {
           <FramesScreen frameId={frameId} onSelect={handleSelectFrame} />
         )}
 
+        {screen === 'captureMode' && (
+          <CaptureModeScreen
+            frame={frame}
+            defaultMode={captureMode}
+            defaultSeconds={autoSeconds}
+            onBack={() => setScreen('frames')}
+            onSelect={handleCaptureModeSelect}
+          />
+        )}
+
         {screen === 'capture' && (
           <CaptureScreen
             frame={frame}
@@ -152,11 +173,14 @@ export default function App() {
             onShotTaken={handleShotTaken}
             onAllDone={() => setScreen('review')}
             notify={notify}
+            captureMode={captureMode}
+            autoSeconds={autoSeconds}
           />
         )}
 
         {screen === 'review' && (
           <ReviewScreen
+            frame={frame}
             shots={shots}
             onRetake={handleRetake}
             onRemove={handleRemoveShot}

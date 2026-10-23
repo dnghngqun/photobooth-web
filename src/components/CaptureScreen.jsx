@@ -5,9 +5,6 @@ import { useCamera } from '../hooks/useCamera.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Thời gian chờ trước khi máy tự chụp — giống photobooth máy thật. */
-const AUTO_SECONDS = 10;
-
 /** Chu vi vòng tròn SVG (r = 19) dùng cho vòng tiến trình đếm ngược. */
 const RING_C = 2 * Math.PI * 19;
 
@@ -35,6 +32,8 @@ export default function CaptureScreen({
   onShotTaken,
   onAllDone,
   notify,
+  captureMode = 'auto',
+  autoSeconds = 10,
 }) {
   const {
     videoRef,
@@ -55,12 +54,10 @@ export default function CaptureScreen({
   const [stillUrl, setStillUrl] = useState('');
   const [hint, setHint] = useState('');
   const [autoOn, setAutoOn] = useState(true);
-  const [autoLeft, setAutoLeft] = useState(AUTO_SECONDS);
+  const [autoLeft, setAutoLeft] = useState(autoSeconds);
   const [flashKey, setFlashKey] = useState(0);
   const fileInputRef = useRef(null);
   const captureInputRef = useRef(null);
-  const shotsRef = useRef(shots);
-  shotsRef.current = shots;
 
   const deadlineRef = useRef(0);
   const prevLeftRef = useRef(null);
@@ -69,17 +66,22 @@ export default function CaptureScreen({
 
   const isCam = source === 'camera';
   const filled = shots.filter(Boolean).length;
+  const done = filled === shots.length;
 
   // Mở/đóng camera theo nguồn ảnh và vòng đời của màn hình.
   useEffect(() => {
     if (source === 'camera') {
-      setHint(`Chạm nút tròn để chụp · hoặc để máy tự chụp sau ${AUTO_SECONDS} giây.`);
+      if (captureMode === 'auto') {
+        setHint(`Máy sẽ tự chụp sau ${autoSeconds} giây · hoặc chạm nút tròn để chụp ngay.`);
+      } else {
+        setHint('Chạm nút tròn để bắt đầu đếm ngược 3-2-1 rồi chụp.');
+      }
       start(facing);
     } else {
       stop();
-      setHint('Chọn ảnh từ thư viện (nút +) hoặc chạm vào khung này để mở camera của máy.');
+      setHint('Chọn ảnh từ thư viện bằng nút bên dưới, hoặc chạm vào khung này.');
     }
-  }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [source, captureMode, autoSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nhả camera khi rời màn hình, nhưng trễ một nhịp: React StrictMode mount →
   // cleanup → mount ngay lập tức, và nếu nhả luôn thì vừa xin camera xong đã
@@ -92,9 +94,7 @@ export default function CaptureScreen({
     };
   }, [stop]);
 
-  // Nhả thiết bị khi tab bị ẩn (người dùng đổi sang app khác) và mở lại khi
-  // quay về. Nhờ vậy camera luôn rảnh cho các ứng dụng/tab khác, và chính app
-  // này cũng không còn giữ thiết bị khi nằm ở nền.
+  // Nhả thiết bị khi tab bị ẩn và mở lại khi quay về.
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) {
@@ -107,7 +107,7 @@ export default function CaptureScreen({
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [facing, source, start, stop]);
 
-  // Báo lỗi camera (không dừng được) bằng toast.
+  // Báo lỗi camera bằng toast.
   useEffect(() => {
     if (error) {
       notify(error);
@@ -150,7 +150,7 @@ export default function CaptureScreen({
     }
   }, [activeSlot, facing, notify, onShotTaken, ready, videoRef]);
 
-  /** Vùng sáng trắng ngắn khi shutter nhấn — cảm giác "cơ" của máy ảnh. */
+  /** Vùng sáng trắng ngắn khi shutter nhấn. */
   const flash = useCallback(() => {
     setFlashKey((k) => k + 1);
     clearTimeout(flashTimerRef.current);
@@ -173,7 +173,7 @@ export default function CaptureScreen({
     setCapturing(false);
   }, [capturing, flash, takeShot]);
 
-  /** Tự chụp: đã đếm tới 0 nên chụp luôn, không đếm 3-2-1 lần nữa. */
+  /** Tự chụp: đã đếm tới 0 nên chụp luôn. */
   const autoFire = useCallback(async () => {
     if (capturing) return;
     setCapturing(true);
@@ -188,19 +188,23 @@ export default function CaptureScreen({
     autoFireRef.current = autoFire;
   }, [autoFire]);
 
-  // Đếm ngược tự chụp. Mỗi lần chụp xong (hoặc đổi ô) timer được đặt lại 30s.
+  // Đếm ngược tự chụp. Mỗi lần chụp xong (hoặc đổi ô) timer đặt lại.
   useEffect(() => {
+    if (captureMode !== 'auto') {
+      setAutoOn(false);
+      setAutoLeft(autoSeconds);
+      return undefined;
+    }
     if (!autoOn || !isCam || !ready || capturing) return undefined;
 
-    deadlineRef.current = Date.now() + AUTO_SECONDS * 1000;
-    prevLeftRef.current = AUTO_SECONDS;
-    setAutoLeft(AUTO_SECONDS);
+    deadlineRef.current = Date.now() + autoSeconds * 1000;
+    prevLeftRef.current = autoSeconds;
+    setAutoLeft(autoSeconds);
 
     const id = setInterval(() => {
       const left = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
       setAutoLeft(left);
       if (left !== prevLeftRef.current) {
-        // Beep ở 3 giây cuối, giống máy thật.
         if (left > 0 && left <= 3) beep(720, 0.07);
         prevLeftRef.current = left;
       }
@@ -211,7 +215,7 @@ export default function CaptureScreen({
     }, 200);
 
     return () => clearInterval(id);
-  }, [activeSlot, autoOn, capturing, isCam, ready]);
+  }, [activeSlot, autoOn, autoSeconds, captureMode, capturing, isCam, ready]);
 
   const handleFlip = useCallback(async () => {
     const next = await flip();
@@ -231,187 +235,230 @@ export default function CaptureScreen({
 
   const autoActive = autoOn && isCam && ready && !capturing;
   const imminent = autoActive && autoLeft > 0 && autoLeft <= 3;
-  // Số lớn ở giữa khung: ưu tiên đếm 3-2-1 thủ công, nếu không thì 3 giây cuối của timer tự chụp.
   const bigNumber = countdown !== null ? countdown : imminent ? autoLeft : null;
 
   return (
     <section className="screen screen--capture">
       <div className="capture">
-        <div
-          className="capture__stage"
-          onClick={() => {
-            if (source === 'upload') captureInputRef.current?.click();
-          }}
-        >
-          <video
-            ref={videoRef}
-            className={`capture__video${facing !== 'environment' ? ' is-mirrored' : ''}`}
-            playsInline
-            muted
-            autoPlay
-            onError={handleVideoError}
-            hidden={!isCam}
-          />
-          <img className="capture__still" src={stillUrl} alt="" hidden={!stillUrl || isCam} />
+        <div className="capture__main">
+          <div
+            className="capture__stage"
+            onClick={() => {
+              if (source === 'upload') captureInputRef.current?.click();
+            }}
+          >
+            <video
+              ref={videoRef}
+              className={`capture__video${facing !== 'environment' ? ' is-mirrored' : ''}`}
+              playsInline
+              muted
+              autoPlay
+              onError={handleVideoError}
+              hidden={!isCam}
+            />
+            <img className="capture__still" src={stillUrl} alt="" hidden={!stillUrl || isCam} />
 
-          {autoActive && (
-            <div
-              className={`capture__timer${imminent ? ' is-imminent' : ''}`}
-              role="timer"
-              aria-label={`Tự chụp sau ${autoLeft} giây`}
-            >
-              <svg viewBox="0 0 44 44" aria-hidden="true">
-                <circle className="capture__timer-track" cx="22" cy="22" r="19" />
-                <circle
-                  className="capture__timer-bar"
-                  cx="22"
-                  cy="22"
-                  r="19"
-                  style={{
-                    strokeDasharray: RING_C,
-                    strokeDashoffset: RING_C * (1 - autoLeft / AUTO_SECONDS),
-                  }}
-                />
-              </svg>
-              <span className="capture__timer-num">{autoLeft}</span>
+            <div className="capture__stage-top">
+              <span className="capture__badge">{frame.name}</span>
+              <span className="capture__badge">
+                {filled}/{shots.length}
+              </span>
+            </div>
+
+            {autoActive && (
+              <div
+                className={`capture__timer${imminent ? ' is-imminent' : ''}`}
+                role="timer"
+                aria-label={`Tự chụp sau ${autoLeft} giây`}
+              >
+                <svg viewBox="0 0 44 44" aria-hidden="true">
+                  <circle className="capture__timer-track" cx="22" cy="22" r="19" />
+                  <circle
+                    className="capture__timer-bar"
+                    cx="22"
+                    cy="22"
+                    r="19"
+                    style={{
+                      strokeDasharray: RING_C,
+                      strokeDashoffset: RING_C * (1 - autoLeft / autoSeconds),
+                    }}
+                  />
+                </svg>
+                <span className="capture__timer-num">{autoLeft}</span>
+              </div>
+            )}
+
+            {bigNumber !== null && (
+              <div className={`capture__countdown${imminent ? ' is-pulse' : ''}`}>{bigNumber}</div>
+            )}
+
+            {flashKey > 0 && <div key={flashKey} className="capture__flash" />}
+
+            <p className="capture__hint">{hint}</p>
+          </div>
+
+          {error && (
+            <div className="capture__error" role="alert">
+              <span className="capture__error-text">
+                {error}
+                {(errorCode || errorReason) && (
+                  <code className="capture__error-reason">
+                    {[errorCode, errorReason].filter(Boolean).join(' · ')}
+                  </code>
+                )}
+                {errorDiag && (
+                  <code className="capture__error-reason">
+                    {[
+                      typeof errorDiag.cameras === 'number' ? `thiết bị: ${errorDiag.cameras}` : null,
+                      `quyền: ${errorDiag.permission}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </code>
+                )}
+              </span>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => {
+                  setHint('Đang thử lại camera…');
+                  retry(facing);
+                }}
+              >
+                Thử lại
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm btn--ghost"
+                onClick={() => onSourceChange('upload')}
+              >
+                Dùng ảnh từ thiết bị
+              </button>
             </div>
           )}
-
-          {bigNumber !== null && (
-            <div className={`capture__countdown${imminent ? ' is-pulse' : ''}`}>{bigNumber}</div>
-          )}
-
-          {flashKey > 0 && <div key={flashKey} className="capture__flash" />}
-
-          <p className="capture__hint">{hint}</p>
         </div>
 
-        {error && (
-          <div className="capture__error" role="alert">
-            <span className="capture__error-text">
-              {error}
-              {(errorCode || errorReason) && (
-                <code className="capture__error-reason">
-                  {[errorCode, errorReason].filter(Boolean).join(' · ')}
-                </code>
+        <aside className="capture__side">
+          <div className="capture__panel">
+            <header className="capture__panel-head">
+              <h2>Chụp ảnh</h2>
+              <p>
+                {frame.name} · {shots.length} ảnh
+              </p>
+            </header>
+
+            <div className="capture__field">
+              <span className="capture__label">Nguồn ảnh</span>
+              <div className="capture__source" role="group" aria-label="Nguồn ảnh">
+                <button
+                  type="button"
+                  className={`chip${isCam ? ' is-active' : ''}`}
+                  onClick={() => onSourceChange('camera')}
+                  aria-pressed={isCam}
+                >
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  className={`chip${!isCam ? ' is-active' : ''}`}
+                  onClick={() => onSourceChange('upload')}
+                  aria-pressed={!isCam}
+                >
+                  Tải ảnh lên
+                </button>
+              </div>
+            </div>
+
+            <div className="capture__field">
+              <span className="capture__label">Kiểu chụp</span>
+              {captureMode === 'auto' ? (
+                <button
+                  type="button"
+                  className={`chip chip--wide${autoOn ? ' is-active' : ''}`}
+                  onClick={() => setAutoOn((v) => !v)}
+                  aria-pressed={autoOn}
+                >
+                  {autoOn ? `Tự chụp sau ${autoSeconds}s · đang bật` : `Tự chụp sau ${autoSeconds}s · đang tắt`}
+                </button>
+              ) : (
+                <span className="capture__note">Đếm ngược 3-2-1 khi bấm nút chụp</span>
               )}
-              {errorDiag && (
-                <code className="capture__error-reason">
-                  {[
-                    typeof errorDiag.cameras === 'number'
-                      ? `thiết bị: ${errorDiag.cameras}`
-                      : null,
-                    `quyền: ${errorDiag.permission}`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </code>
-              )}
-            </span>
+            </div>
+
+            <div className="capture__field">
+              <span className="capture__label">
+                Ảnh đã chụp <b>{filled}/{shots.length}</b>
+              </span>
+              <div className="capture__slots" role="group" aria-label="Các ô ảnh">
+                {shots.map((shot, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`slot${shot ? ' is-filled' : ''}${i === activeSlot ? ' is-active' : ''}`}
+                    onClick={() => onSlotSelect(i)}
+                    aria-label={`Ảnh ${i + 1}`}
+                    aria-pressed={i === activeSlot}
+                  >
+                    <SlotThumb shot={shot} />
+                    {!shot && <span className="slot__num">{i + 1}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="capture__controls">
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={handleFlip}
+                aria-label="Đổi camera trước/sau"
+                hidden={!isCam || !canFlip}
+              >
+                &#8635;
+              </button>
+
+              <button
+                type="button"
+                className="shutter"
+                data-shutter
+                onClick={runShutter}
+                aria-label="Chụp"
+                disabled={!isCam || capturing}
+              >
+                <span className="shutter__ring" aria-hidden="true" />
+              </button>
+
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Chọn ảnh từ thiết bị"
+                hidden={isCam}
+              >
+                &#65291;
+              </button>
+            </div>
+
+            <div className="capture__progress" aria-hidden="true">
+              {shots.map((shot, i) => (
+                <span key={i} className={`capture__pip${shot ? ' is-filled' : ''}`} />
+              ))}
+            </div>
+
             <button
               type="button"
-              className="btn btn--sm"
-              onClick={() => {
-                setHint('Đang thử lại camera…');
-                retry(facing);
-              }}
+              className="btn btn--primary capture__done"
+              onClick={onAllDone}
+              disabled={!done}
             >
-              Thử lại
+              {done ? 'Xem lại & in' : `Còn ${shots.length - filled} ảnh`}
             </button>
-            <button
-              type="button"
-              className="btn btn--sm btn--ghost"
-              onClick={() => onSourceChange('upload')}
-            >
-              Dùng ảnh từ thiết bị
-            </button>
+
+            <p className="capture__note capture__note--center">
+              Mẹo: nhấn <kbd>Enter</kbd> hoặc <kbd>Space</kbd> để chụp nhanh.
+            </p>
           </div>
-        )}
-
-        <div className="capture__source" role="group" aria-label="Nguồn ảnh">
-          <button
-            type="button"
-            className={`chip${isCam ? ' is-active' : ''}`}
-            onClick={() => onSourceChange('camera')}
-            aria-pressed={isCam}
-          >
-            Camera
-          </button>
-          <button
-            type="button"
-            className={`chip${!isCam ? ' is-active' : ''}`}
-            onClick={() => onSourceChange('upload')}
-            aria-pressed={!isCam}
-          >
-            Tải ảnh lên
-          </button>
-        </div>
-
-        <div className="capture__auto">
-          <button
-            type="button"
-            className={`chip${autoOn ? ' is-active' : ''}`}
-            onClick={() => setAutoOn((v) => !v)}
-            aria-pressed={autoOn}
-          >
-            Tự chụp sau {AUTO_SECONDS}s
-          </button>
-          {autoActive && <span className="capture__auto-note">Máy sẽ tự chụp · còn {autoLeft}s</span>}
-        </div>
-
-        <div className="capture__slots" role="group" aria-label="Các ô ảnh">
-          {shots.map((shot, i) => (
-            <button
-              key={i}
-              type="button"
-              className={`slot${shot ? ' is-filled' : ''}${i === activeSlot ? ' is-active' : ''}`}
-              onClick={() => onSlotSelect(i)}
-              aria-label={`Ảnh ${i + 1}`}
-              aria-pressed={i === activeSlot}
-            >
-              <SlotThumb shot={shot} />
-              {!shot && <span className="slot__num">{i + 1}</span>}
-            </button>
-          ))}
-        </div>
-
-        <div className="capture__bar">
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={handleFlip}
-            aria-label="Đổi camera trước/sau"
-            hidden={!isCam || !canFlip}
-          >
-            &#8635;
-          </button>
-          <button
-            type="button"
-            className="shutter"
-            data-shutter
-            onClick={runShutter}
-            aria-label="Chụp"
-            disabled={!isCam || capturing}
-          />
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Chọn ảnh từ thiết bị"
-            hidden={isCam}
-          >
-            &#65291;
-          </button>
-        </div>
-
-        <p className="capture__counter">
-          Đã chụp {filled}/{shots.length} ảnh
-          {filled === shots.length && (
-            <button type="button" className="btn btn--primary btn--sm" onClick={onAllDone}>
-              Xem lại &amp; in
-            </button>
-          )}
-        </p>
+        </aside>
 
         <input
           ref={fileInputRef}

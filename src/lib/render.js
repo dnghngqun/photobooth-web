@@ -6,6 +6,7 @@
  */
 
 import { computeLayout, PAGE_W, PAGE_H, STRIP_W } from './frames.js';
+import { drawVectorSticker } from './stickers.js';
 
 export { computeLayout };
 
@@ -116,7 +117,9 @@ export function drawSticker(ctx, st, W, H) {
   if (st.rot) ctx.rotate(st.rot);
   if (st.scale && st.scale !== 1) ctx.scale(st.scale, st.scale);
 
-  if (st.type === 'emoji') {
+  if (st.type === 'vector') {
+    drawVectorSticker(ctx, st.value, size, st.color);
+  } else if (st.type === 'emoji') {
     ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -182,10 +185,64 @@ function paintBackground(ctx, frame, W, H) {
     const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
     bg.stops.forEach((c, i) => grad.addColorStop(bg.stops.length === 1 ? 0 : i / (bg.stops.length - 1), c));
     ctx.fillStyle = grad;
+  } else if (bg.type === 'radial') {
+    const stops = bg.stops || [bg.color || '#ffffff', '#ffffff'];
+    const cx = (bg.cx ?? 0.5) * W;
+    const cy = (bg.cy ?? 0.2) * H;
+    const rad = Math.max(W, H) * (bg.radius ?? 0.85);
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+    stops.forEach((c, i) => grad.addColorStop(stops.length === 1 ? 0 : i / (stops.length - 1), c));
+    ctx.fillStyle = grad;
   } else {
     ctx.fillStyle = bg.color || '#ffffff';
   }
   ctx.fillRect(0, 0, W, H);
+
+  // Hoạ tiết nền: chấm / lưới / sọc chéo.
+  const pattern = bg.pattern;
+  if (!pattern) return;
+  const gap = bg.patternGap || 60;
+  const color = bg.patternColor || '#ffffff';
+  ctx.save();
+  ctx.globalAlpha = bg.patternAlpha ?? 0.25;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  if (pattern === 'dots') {
+    const r = (bg.patternSize || gap * 0.16) / 2;
+    for (let y = gap / 2; y < H + gap; y += gap) {
+      for (let x = gap / 2; x < W + gap; x += gap) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (pattern === 'grid') {
+    ctx.lineWidth = bg.patternSize || 2;
+    for (let x = gap; x < W; x += gap) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let y = gap; y < H; y += gap) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+  } else if (pattern === 'stripe') {
+    const band = bg.patternSize || 16;
+    for (let x = -H; x < W + H; x += gap) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x - H, H);
+      ctx.lineTo(x - H + band, H);
+      ctx.lineTo(x + band, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 function paintDecor(ctx, frame) {
@@ -193,24 +250,26 @@ function paintDecor(ctx, frame) {
   if (!decor) return;
   const pad = frame.pad ?? 0;
   const head = frame.header ?? 0;
-  if (!head) return;
+  const full = decor.area === 'full';
+  if (!head && !full) return;
 
   const rng = mulberry32(frame.id.split('').reduce((a, ch) => a + ch.charCodeAt(0), 7));
-  const bandX = pad;
-  const bandY = pad;
-  const bandW = frame.w - pad * 2;
-  const bandH = head;
+  const area = full
+    ? { x: 0, y: 0, w: frame.w, h: frame.h }
+    : { x: pad, y: pad, w: frame.w - pad * 2, h: head };
   const count = decor.count || 14;
-  const base = Math.min(bandH * 0.3, bandW * 0.06);
+  const base = full
+    ? Math.min(frame.w, frame.h) * 0.045
+    : Math.min(area.h * 0.3, area.w * 0.06);
 
   for (let i = 0; i < count; i++) {
-    const x = bandX + rng() * bandW;
-    const y = bandY + rng() * bandH;
+    const x = area.x + rng() * area.w;
+    const y = area.y + rng() * area.h;
     const s = base * (0.5 + rng() * 0.9);
     ctx.save();
     ctx.globalAlpha = decor.alpha ?? 0.6;
     ctx.translate(x, y);
-    ctx.rotate((rng() - 0.5) * 0.8);
+    ctx.rotate((rng() - 0.5) * (full ? 1.4 : 0.8));
     ctx.fillStyle = decor.color || '#ffffff';
     if (decor.type === 'hearts') {
       heartPath(ctx, s / 2);
@@ -218,6 +277,12 @@ function paintDecor(ctx, frame) {
     } else if (decor.type === 'stars') {
       starPath(ctx, s / 2);
       ctx.fill();
+    } else if (decor.type === 'dots') {
+      ctx.beginPath();
+      ctx.arc(0, 0, s / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (decor.type === 'confetti') {
+      ctx.fillRect(-s / 2, -s / 6, s, s / 3);
     } else {
       sparklePath(ctx, s / 2);
       ctx.fill();
@@ -226,12 +291,31 @@ function paintDecor(ctx, frame) {
   }
 }
 
+/** Viền bao quanh cả tờ in (một số phông cần khung ngoài). */
+function paintEdge(ctx, frame) {
+  const edge = frame.edge;
+  if (!edge) return;
+  const inset = (edge.inset ?? 0) + edge.width / 2;
+  ctx.save();
+  ctx.strokeStyle = edge.color || '#ffffff';
+  ctx.lineWidth = edge.width;
+  roundRect(ctx, inset, inset, frame.w - inset * 2, frame.h - inset * 2, edge.radius || 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function paintTitle(ctx, frame) {
   const t = frame.title;
   if (!t) return;
   const pad = frame.pad ?? 0;
   const head = frame.header ?? 0;
-  const y = pad + head * (t.y ?? 0.55);
+  const foot = frame.footer ?? 0;
+  // Có header thì tiêu đề nằm trong dải trên; chỉ có footer thì nằm giữa dải dưới.
+  const y = head
+    ? pad + head * (t.y ?? 0.55)
+    : foot
+      ? frame.h - pad - foot / 2
+      : pad + (t.y ?? 0.5) * frame.h;
   ctx.save();
   ctx.fillStyle = t.color || '#000000';
   ctx.font = `${t.weight || 800} ${t.size}px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`;
@@ -321,6 +405,7 @@ export function drawScene(ctx, frame, shots, stickers, opts = {}) {
     }
   });
 
+  paintEdge(ctx, frame);
   paintTitle(ctx, frame);
   (stickers || []).forEach((st) => drawSticker(ctx, st, frame.w, frame.h));
 
