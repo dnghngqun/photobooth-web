@@ -667,8 +667,15 @@ kbd {
   isolation: isolate;
 }
 
+/*
+ * Phủ kín khung bằng position:absolute. Nếu chỉ dùng height:100% thì trên
+ * mobile khung hình co giãn theo flex (height:auto) khiến phần trăm không
+ * quy đổi được → <video> giữ tỉ lệ gốc và chừa một dải đen dưới khung.
+ */
 .capture__video,
 .capture__still {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1045,7 +1052,7 @@ kbd {
 
 .review-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
 
@@ -1568,6 +1575,11 @@ kbd {
     gap: 4px;
   }
 
+  /* Hàng 1: nguồn ảnh | camera trước-sau. Kiểu chụp chiếm trọn hàng dưới. */
+  .capture__field--mode {
+    grid-column: 1 / -1;
+  }
+
   .capture__label {
     font-size: 10px;
     letter-spacing: 0.03em;
@@ -1663,7 +1675,7 @@ kbd {
   }
 
   .decorate__canvas {
-    max-height: 66dvh;
+    max-height: 72dvh;
   }
 }
 

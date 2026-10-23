@@ -54,9 +54,22 @@ function waitForVideoFrame(video, ms) {
  *   - khoá chéo-tab bằng Web Locks nên biết chính xác tab nào đang giữ camera,
  *   - rời màn hình hoặc ẩn tab thì thiết bị được nhả lại cho ứng dụng khác.
  */
+/**
+ * Điện thoại/máy tính bảng: gần như luôn có camera trước và sau, kể cả khi
+ * trình duyệt không công bố facingMode. Dùng để hiện lựa chọn camera.
+ */
+function isTouchDevice() {
+  if (typeof window === 'undefined') return false;
+  return (
+    (navigator.maxTouchPoints || 0) > 1 ||
+    (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+  );
+}
+
 export function useCamera() {
   const videoRef = useRef(null);
   const tokenRef = useRef(0);
+  const touchRef = useRef(isTouchDevice());
 
   const [facing, setFacing] = useState('user');
   const [ready, setReady] = useState(false);
@@ -65,6 +78,7 @@ export function useCamera() {
   const [errorCode, setErrorCode] = useState(null);
   const [errorDiag, setErrorDiag] = useState(null);
   const [canFlip, setCanFlip] = useState(false);
+  const [canSwitch, setCanSwitch] = useState(false);
 
   const stop = useCallback(() => {
     tokenRef.current += 1;
@@ -217,20 +231,34 @@ export function useCamera() {
     [attachAndReady]
   );
 
-  /** Đổi giữa camera trước/sau. Trả về facing mới hoặc null nếu không đổi được. */
-  const flip = useCallback(async () => {
+  /**
+   * Chọn camera trước/sau. Trả về facing mới, hoặc null nếu máy không có
+   * camera đó — khi thất bại, camera cũ được mở lại nên hình không bị đen.
+   */
+  const switchTo = useCallback(async (want) => {
     const video = videoRef.current;
     if (!video) return null;
     try {
-      const next = await cameraSession.flip(video);
-      if (!next) return null;
+      const next = await cameraSession.switchTo(want, video);
       setFacing(next);
       setCanFlip(cameraSession.canFlip);
+      setReady(true);
+      setError(null);
+      setErrorReason(null);
+      setErrorCode(null);
+      setErrorDiag(null);
       return next;
     } catch {
+      setFacing(cameraSession.facing);
+      setReady(cameraSession.alive);
       return null;
     }
   }, []);
+
+  /** Đổi giữa camera trước/sau. Trả về facing mới hoặc null nếu không đổi được. */
+  const flip = useCallback(async () => {
+    return switchTo(cameraSession.facing === 'user' ? 'environment' : 'user');
+  }, [switchTo]);
 
   return {
     videoRef,
@@ -241,6 +269,9 @@ export function useCamera() {
     errorCode,
     errorDiag,
     canFlip,
+    canSwitch,
+    isTouch: touchRef.current,
+    switchTo,
     start,
     stop,
     retry,

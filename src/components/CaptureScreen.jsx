@@ -44,11 +44,15 @@ export default function CaptureScreen({
     errorCode,
     errorDiag,
     canFlip,
+    canSwitch,
+    isTouch,
     start,
     stop,
     retry,
+    switchTo,
     flip,
   } = useCamera();
+  const [switching, setSwitching] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [capturing, setCapturing] = useState(false);
   const [stillUrl, setStillUrl] = useState('');
@@ -74,14 +78,14 @@ export default function CaptureScreen({
   useEffect(() => {
     if (source === 'camera') {
       if (captureMode === 'auto') {
-        setHint(`Máy sẽ tự chụp sau ${autoSeconds} giây · hoặc chạm nút tròn để chụp ngay.`);
+        setHint(`Tự chụp sau ${autoSeconds}s · hoặc chạm nút tròn.`);
       } else {
-        setHint('Chạm nút tròn để bắt đầu đếm ngược 3-2-1 rồi chụp.');
+        setHint('Chạm nút tròn: đếm 3-2-1 rồi chụp.');
       }
       start(facing);
     } else {
       stop();
-      setHint('Chọn ảnh từ thư viện bằng nút bên dưới, hoặc chạm vào khung này.');
+      setHint('Chọn ảnh từ thư viện hoặc chạm vào khung này.');
     }
   }, [source, captureMode, autoSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,13 +224,29 @@ export default function CaptureScreen({
     return () => clearInterval(id);
   }, [activeSlot, autoOn, autoSeconds, captureMode, capturing, done, isCam, ready]);
 
+  /**
+   * Chọn camera trước/sau từ danh sách. Không hiện thông báo khi thành công
+   * (nút đang sáng là đủ); chỉ báo khi máy không có camera đó, và camera cũ
+   * vẫn được mở lại nên không bị đen hình.
+   */
+  const handleFacing = useCallback(
+    async (want) => {
+      if (switching || want === facing) return;
+      setSwitching(true);
+      const next = await switchTo(want);
+      setSwitching(false);
+      if (!next) {
+        notify(want === 'environment' ? 'Máy này không mở được camera sau.' : 'Máy này không mở được camera trước.');
+      }
+    },
+    [facing, notify, switchTo, switching]
+  );
+
   const handleFlip = useCallback(async () => {
     const next = await flip();
     if (!next) {
       notify('Thiết bị chỉ có một camera.');
-      return;
     }
-    notify(next === 'environment' ? 'Đã chuyển sang camera sau' : 'Đã chuyển sang camera trước');
   }, [flip, notify]);
 
   // Báo lỗi của chính <video> (mã MediaError) thay vì im lặng.
@@ -372,6 +392,32 @@ export default function CaptureScreen({
               </div>
             </div>
 
+            {isCam && canSwitch && (
+              <div className="capture__field capture__field--facing">
+                <span className="capture__label">Camera</span>
+                <div className="capture__source" role="group" aria-label="Chọn camera trước hoặc sau">
+                  <button
+                    type="button"
+                    className={`chip${facing === 'user' ? ' is-active' : ''}`}
+                    onClick={() => handleFacing('user')}
+                    aria-pressed={facing === 'user'}
+                    disabled={switching}
+                  >
+                    Trước
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip${facing === 'environment' ? ' is-active' : ''}`}
+                    onClick={() => handleFacing('environment')}
+                    aria-pressed={facing === 'environment'}
+                    disabled={switching}
+                  >
+                    Sau
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="capture__field capture__field--mode">
               <span className="capture__label">Kiểu chụp</span>
               {captureMode === 'auto' ? (
@@ -415,7 +461,7 @@ export default function CaptureScreen({
                 className="icon-btn"
                 onClick={handleFlip}
                 aria-label="Đổi camera trước/sau"
-                hidden={!isCam || !canFlip}
+                hidden={!isCam || !canFlip || isTouch}
               >
                 &#8635;
               </button>
