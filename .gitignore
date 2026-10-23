@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Cài đặt cục bộ của Vite
+.vite/
+node_modules/.vite/
+
+# Build output
+dist/
+dist-ssr/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Biến môi trường (không commit khoá bí mật)
+.env
+.env.*
+!.env.example
+
+# File hệ điều hành / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Cache của công cụ
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# Ảnh / file tạm khi thử nghiệm
+coverage/
+tmp/
